@@ -1,4 +1,4 @@
-from dash import Dash, html, dcc
+from dash import Dash, html, dcc, Input, Output
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -35,26 +35,6 @@ monthly_details.columns = ['Month', '# of Sessions', 'Unique Clients',
                            'Average Collected', 'Average Outstanding']
 monthly_details['Month'] = monthly_details['Month'].astype(str)
 
-annual_details = df.groupby(df['Purchase Date'].dt.to_period('Y')).agg({
-    'Invoice #': 'count',
-    'Patient Guid': pd.Series.nunique,
-    'Total': 'sum',
-    'Collected': 'sum',
-    'Balance': 'sum'
-}).reset_index()
-annual_details['Total_avg'] = round(
-    annual_details['Total'] / annual_details['Invoice #'],
-    2)
-annual_details['Collected_avg'] = round(
-    annual_details['Collected'] / annual_details['Invoice #'],
-    2)
-annual_details['Balance_avg'] = round(
-    annual_details['Balance'] / annual_details['Invoice #'],
-    2)
-annual_details.columns = ['Year', '# of Sessions', 'Unique Clients',
-                          'Total Charged', 'Total Collected',
-                          'Toal Outstanding', 'Average Charged',
-                          'Average Collected', 'Average Outstanding']
 
 client_details = df.groupby('Patient Guid', as_index=False).agg({
     'Invoice #': 'count',
@@ -96,88 +76,170 @@ melted = monthly_details.melt(
     var_name='Metric',
     value_name='Value'
 )
+# sliding scale histograms
+session_hist = px.histogram(
+    df,
+    x='Total',
+    nbins=40,
+    title='Sliding Scale Distribution by Session Count'
+)
+session_hist.update_layout(xaxis_title='Session Charge', yaxis_title='Session Count')
+session_hist.update_xaxes(range=[0, None])
 
+client_hist = px.histogram(client_details, x='Average Charged', nbins=30, title='Sliding Scale Distribution by Client Count')
+client_hist.update_layout(xaxis_title='Average Charged', yaxis_title='Client Count')
+client_hist.update_xaxes(range=[0, None])
+
+line_fig = px.line(
+    monthly_details,
+    x='Month',
+    y='# of Sessions',
+    title='Sessions per Month'
+)
+
+# KPI Cards
 fig4 = go.Figure()
-fig4.add_trace(go.Indicator(
-    mode='number',
-    title='Days with Clients',
-    value=client_days,
-    gauge={
-        'axis': {'visible': False}},
-    domain={'row': 0, 'column': 1}
+
+# Indicators
+indicators = [
+    {'title': 'Days Worked', 'value': client_days + fridays, 'row': 0, 'column': 0},
+    {'title': 'Days with Clients', 'value': client_days, 'row': 0, 'column': 1},
+    {'title': 'Total Sessions', 'value': len(df), 'row': 0, 'column': 2},
+    {'title': 'Avg Sessions per Day', 'value': avg_sessions_per_day, 'row': 1, 'column': 0},
+    {'title': 'Unique Clients', 'value': total_clients, 'row': 1, 'column': 1},
+    {'title': 'Avg Rate Charged', 'value': avg_charged, 'row': 1, 'column': 2},
+    {'title': 'Total Revenue', 'value': total_revenue, 'row': 2, 'column': 1},
+]
+
+for ind in indicators:
+    fig4.add_trace(go.Indicator(
+        mode='number',
+        value=ind['value'],
+        title={'text': ind['title'], 'font': {'size': 18}},
+        number={'font': {'size': 28}},
+        domain={'row': ind['row'], 'column': ind['column']}
     ))
 
-fig4.add_trace(go.Indicator(
-    mode='number',
-    title='Days Worked',
-    value=client_days + fridays,
-    gauge={
-        'axis': {'visible': False}},
-    domain={'row': 0, 'column': 0}
-))
-
-fig4.add_trace(go.Indicator(
-    mode='number',
-    title='Total Sessions',
-    value=len(df),
-    gauge={
-        'axis': {'visible': False}},
-    domain={'row': 0, 'column': 2}
-))
-
-fig4.add_trace(go.Indicator(
-    mode='number',
-    title='Avg Sessions per Day',
-    value=avg_sessions_per_day,
-    gauge={
-        'axis': {'visible': False}},
-    domain={'row': 1, 'column': 0}
-))
-
-fig4.add_trace(go.Indicator(
-    mode='number',
-    title='Unique Clients',
-    value=total_clients,
-    gauge={
-        'axis': {'visible': False}},
-    domain={'row': 1, 'column': 1}
-))
-
-fig4.add_trace(go.Indicator(
-    mode='number',
-    title='Avg Rate Charged',
-    value= avg_charged,
-    gauge={
-        'axis': {'visible': False}},
-    domain={'row': 1, 'column': 2}
-))
-
-fig4.add_trace(go.Indicator(
-    mode='number',
-    title='Total Revenue',
-    value=total_revenue,
-    gauge={
-        'axis': {'visible': False}},
-    domain={'row': 2, 'column': 1}
-))
-
 fig4.update_layout(
-    grid = {'rows': 3, 'columns': 3, 'pattern': "independent"},
-    height=600)
+    grid={'rows': 3, 'columns': 3, 'pattern': "independent"},
+    margin=dict(l=20, r=20, t=20, b=20),
+    height=500,  # more compact height
+    paper_bgcolor="white"
+)
 
+# --- Create App Layout ---
 app = Dash()
 
-app.layout = [
-    html.Div(children='Evergreen Counselling: Mar 2024 - Feb 2025'),
-    dcc.Graph(figure=fig4),
-    dcc.Graph(figure=px.line(monthly_details, x='Month', y='# of Sessions',
-                             title='Sessions per Month')),
-    dcc.Graph(
-        figure=px.histogram(df, x='Total',
-                            title='Sliding Scale Distribution by Session Count',
-                            nbins=40)),
+app.layout = html.Div(
+    style={'backgroundColor': '#f9f9f9', 'padding': '20px'},
+    children=[
+        html.H1('Evergreen Counselling: Mar 2024 - Feb 2025', style={'textAlign': 'center', 'marginBottom': '30px'}),
+        html.Div(
+            style={'display': 'flex', 'gap': '20px'},
+            children=[
+                html.Div(style={'flex': '1'}, children=dcc.Graph(figure=fig4)),       
+                html.Div(style={'flex': '1'}, children=[
+                    # Dropdown selector
+                    dcc.Dropdown(
+                        id='histogram-toggle',
+                        options=[
+                            {'label': 'By Session Count', 'value': 'session'},
+                            {'label': 'By Client Count', 'value': 'client'}
+                        ],
+                        value='session',
+                        clearable=False,
+                        style={'marginBottom': '10px'}
+                    ),
+                    dcc.Graph(id='histogram-graph')
+                ])
+            ]
+        ),
 
-]
+        # Second Row: Line Chart Full Width
+        html.Div(
+            style={'marginTop': '40px'},
+            children=dcc.Graph(figure=line_fig)
+        )
+    ]
+)
+
+# --- Callbacks for Histogram Toggle ---
+@app.callback(
+    Output('histogram-graph', 'figure'),
+    Input('histogram-toggle', 'value')
+)
+def update_histogram(selected_value):
+    if selected_value == 'session':
+        return session_hist
+    else:
+        return client_hist
+# fig4 = go.Figure()
+# fig4.add_trace(go.Indicator(
+#     mode='number',
+#     title='Days with Clients',
+#     value=client_days,
+#     domain={'row': 0, 'column': 1}
+#     ))
+
+# fig4.add_trace(go.Indicator(
+#     mode='number',
+#     title='Days Worked',
+#     value=client_days + fridays,
+#     domain={'row': 0, 'column': 0}
+# ))
+
+# fig4.add_trace(go.Indicator(
+#     mode='number',
+#     title='Total Sessions',
+#     value=len(df),
+#     domain={'row': 0, 'column': 2}
+# ))
+
+# fig4.add_trace(go.Indicator(
+#     mode='number',
+#     title='Avg Sessions per Day',
+#     value=avg_sessions_per_day,
+#     domain={'row': 1, 'column': 0}
+# ))
+
+# fig4.add_trace(go.Indicator(
+#     mode='number',
+#     title='Unique Clients',
+#     value=total_clients,
+#     domain={'row': 1, 'column': 1}
+# ))
+
+# fig4.add_trace(go.Indicator(
+#     mode='number',
+#     title='Avg Rate Charged',
+#     value=avg_charged,
+#     domain={'row': 1, 'column': 2}
+# ))
+
+# fig4.add_trace(go.Indicator(
+#     mode='number',
+#     title='Total Revenue',
+#     value=total_revenue,
+#     domain={'row': 2, 'column': 1}
+# ))
+
+# fig4.update_layout(
+#     grid={'rows': 3, 'columns': 3, 'pattern': "independent"},
+#     height=600)
+
+# app = Dash()
+
+# app.layout = [
+#     html.Div(children='Evergreen Counselling: Mar 2024 - Feb 2025'),
+#     dcc.Graph(figure=fig4),
+#     dcc.Graph(figure=px.line(monthly_details, x='Month', y='# of Sessions',
+#                              title='Sessions per Month')),
+#     dcc.Graph(
+#         figure=px.histogram(df, x='Total',
+#                             title='Sliding Scale Distribution by Session Count',
+#                             nbins=40)),
+
+# ]
 
 if __name__ == '__main__':
     app.run(debug=True)
