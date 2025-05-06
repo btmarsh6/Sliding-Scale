@@ -23,7 +23,12 @@ app.layout = html.Div(
     style={'backgroundColor': '#6ba569 ', 'padding': '20px'},
     children=[
         html.H1('Evergreen Counselling',
-                style={'textAlign': 'center', 'marginBottom': '15px'}),
+                style={'textAlign': 'center',
+                       'marginTop': '0px',
+                       'marginBottom': '15px',
+                       'fontFamily': 'Helvetica',
+                       'color': 'white',
+                       'fontSize': '50px'}),
         html.Div([
             dcc.Upload(
                 id='upload-data',
