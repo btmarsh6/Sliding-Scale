@@ -58,16 +58,16 @@ def create_histograms(df, client_details):
         nbins=40,
         title='Sliding Scale Distribution by Session Count'
     )
-    session_hist.update_layout(xaxis_title='Session Charge',
-                               yaxis_title='Session Count')
+    session_hist.update_layout(xaxis_title='Session Charge ($)',
+                               yaxis_title='# of Sessions')
     session_hist.update_xaxes(range=[0, None])
 
     client_hist = px.histogram(
         client_details, x='Average Charged', nbins=30,
         title='Sliding Scale Distribution by Client Count'
         )
-    client_hist.update_layout(xaxis_title='Average Charged',
-                              yaxis_title='Client Count')
+    client_hist.update_layout(xaxis_title='Average Charged ($)',
+                              yaxis_title='# of Clients')
     client_hist.update_xaxes(range=[0, None])
 
     return session_hist, client_hist
@@ -79,4 +79,32 @@ def create_monthly_line_chart(monthly_details):
                   y='# of Sessions',
                   title='Sessions per Month'
                   )
+    fig.update_layout(xaxis_title=None)
+    return fig
+
+
+def create_weekday_bars(df):
+    df['Day of Week'] = df['Purchase Date'].dt.day_name()
+    date_count = df.groupby('Purchase Date').agg({
+        'Invoice #': 'count',
+        'Total': 'sum',
+        'Day of Week': 'first'}).reset_index()
+    day_name_count = date_count.groupby('Day of Week').agg({
+        'Invoice #': 'mean',
+        'Total': 'mean'})
+    day_name_count.rename(columns={
+        'Invoice #': 'Avg Sessions',
+        'Total': 'Avg Revenue'}, inplace=True)
+    day_name_count = day_name_count.reindex(
+        ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+    fig = px.bar(day_name_count,
+                 x=day_name_count.index,
+                 y='Avg Sessions',
+                 text=day_name_count['Avg Revenue'].apply(lambda x: f"${x:,.2f}"),
+                 title='Average Sessions and Revenue by Day of Week')
+    fig.update_traces(texttemplate='%{text}', textposition='inside')
+    fig.update_layout(xaxis_title=None,
+                      yaxis_title='Avg # of Sessions',
+                      xaxis_tickvals=day_name_count.index,
+                      xaxis_ticktext=day_name_count.index)
     return fig
