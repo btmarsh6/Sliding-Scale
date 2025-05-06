@@ -1,8 +1,23 @@
 import pandas as pd
+import base64
+import io
+from dash import html
 
 
-def load_and_clean_data(filepath):
-    df = pd.read_csv(filepath)
+def load_and_clean_data(contents, filename):
+    content_type, content_string = contents.split(',')
+
+    decoded = base64.b64decode(content_string)
+    try:
+        if 'csv' in filename:
+            df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
+        elif 'xls' in filename:
+            df = pd.read_excel(io.BytesIO(decoded))
+    except Exception as e:
+        print(e)
+        return html.Div([
+            'There was an error processing this file.'
+        ])
     df.columns = df.columns.str.strip()
     df.drop(columns=['Invoice Date', 'Unnamed: 4', 'Total', 'Location',
                      'Staff Member', 'Income Category', 'Payer', 'Details'],
@@ -89,6 +104,15 @@ def get_kpis(df):
         'Avg Rate Charged': df['Total'].mean(),
         'Total Revenue': df['Collected'].sum()
     }
+
+
+def filter_data(df_raw, start_date, end_date):
+    df = df_raw.copy()
+    if start_date:
+        df = df[df['Purchase Date'] >= pd.to_datetime(start_date)]
+    if end_date:
+        df = df[df['Purchase Date'] <= pd.to_datetime(end_date)]
+    return df
 
 # melted = monthly_details.melt(
 #     id_vars=['Month'],

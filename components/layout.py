@@ -1,10 +1,15 @@
-from dash import Dash, html, dcc, Input, Output
+from dash import html, dcc
 import plotly.express as px
 import plotly.graph_objects as go
+from data_processing.process_data import (
+    get_client_details,
+    get_monthly_details, get_kpis
+)
 
 
+# Functions to create visualizations
 def create_kpi_cards(kpis):
-    fig  = go.Figure()
+    fig = go.Figure()
 
     # Indicators
     indicators = [
@@ -37,8 +42,12 @@ def create_kpi_cards(kpis):
             value=ind['value'],
             title={'text': ind['title'], 'font': {'size': 18}},
             number={'font': {'size': 28},
-                    'prefix': '$' if ind['title'] in ['Avg Rate Charged', 'Total Revenue'] else '',
-                    'valueformat': ',.2f' if ind['title'] in ['Avg Rate Charged', 'Total Revenue'] else ''},
+                    'prefix': '$' if ind['title'] in [
+                        'Avg Rate Charged', 'Total Revenue'
+                        ] else '',
+                    'valueformat': ',.2f' if ind['title'] in [
+                        'Avg Rate Charged', 'Total Revenue'
+                        ] else ''},
             domain={'row': ind['row'], 'column': ind['column']}
         ))
 
@@ -100,7 +109,8 @@ def create_weekday_bars(df):
     fig = px.bar(day_name_count,
                  x=day_name_count.index,
                  y='Avg Sessions',
-                 text=day_name_count['Avg Revenue'].apply(lambda x: f"${x:,.2f}"),
+                 text=day_name_count['Avg Revenue'].apply(
+                     lambda x: f"${x:,.2f}"),
                  title='Average Sessions and Revenue by Day of Week')
     fig.update_traces(texttemplate='%{text}', textposition='inside')
     fig.update_layout(xaxis_title=None,
@@ -108,3 +118,46 @@ def create_weekday_bars(df):
                       xaxis_tickvals=day_name_count.index,
                       xaxis_ticktext=day_name_count.index)
     return fig
+
+
+# Functions to create HTML components
+def create_kpi_and_histograms(df):
+    kpis = get_kpis(df)
+    kpi_fig = create_kpi_cards(kpis)
+    session_hist, client_hist = create_histograms(df, get_client_details(df))
+    component = html.Div(
+                    style={'display': 'flex', 'gap': '20px'},
+                    children=[
+                        html.Div(style={'flex': '1'},
+                                 children=dcc.Graph(figure=kpi_fig)),
+                        html.Div(style={'flex': '1'}, children=[
+                                        # Dropdown selector
+                                        dcc.Dropdown(
+                                            id='histogram-toggle',
+                                            options=[
+                                                {'label': 'By Session Count',
+                                                 'value': 'session'},
+                                                {'label': 'By Client Count',
+                                                 'value': 'client'}
+                                            ],
+                                            value='session',
+                                            clearable=False,
+                                            style={'marginBottom': '10px'}
+                                        ),
+                                        dcc.Graph(id='histogram-graph')
+                                    ])])
+    return component, session_hist, client_hist
+
+
+def create_bar_and_line(df):
+    weekly_bar_fig = create_weekday_bars(df)
+    monthly_line_fig = create_monthly_line_chart(get_monthly_details(df))
+    component = html.Div(
+                    style={'display': 'flex', 'gap': '20px'},
+                    children=[
+                        html.Div(style={'flex': '1'},
+                                 children=dcc.Graph(figure=weekly_bar_fig)),
+                        html.Div(style={'flex': '1'},
+                                 children=dcc.Graph(figure=monthly_line_fig))
+                    ])
+    return component
