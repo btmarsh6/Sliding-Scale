@@ -1,24 +1,16 @@
-from dash import Dash, html, dcc, Input, Output
-from data_processing.process_data import (
-    load_and_clean_data, get_client_details,
-    get_monthly_details, get_kpis
-)
+from dash import Dash, html, dcc, Input, Output, State, ctx
+from data_processing.process_data import load_and_clean_data, filter_data
 from components.layout import (
-    create_kpi_cards, create_histograms,
-    create_monthly_line_chart,
-    create_weekday_bars
+    create_kpi_and_histograms_component,
+    create_bar_and_line_component,
+    get_client_details, create_histograms
 )
-import pandas as pd
-import os
 
 
-app = Dash()
+app = Dash(suppress_callback_exceptions=True)
 
-# Load Data
-input_file = ('data/Sales_20240301_20250228.csv')
-df_raw = load_and_clean_data(input_file)
+df_raw = None
 
-# Dashboard Layout
 app.layout = html.Div(
     style={'backgroundColor': '#6ba569 ', 'padding': '20px'},
     children=[
@@ -55,8 +47,8 @@ app.layout = html.Div(
                             }),
             dcc.DatePickerRange(
                 id='date-picker-range',
-                start_date=df_raw['Purchase Date'].min().date(),
-                end_date=df_raw['Purchase Date'].max().date(),
+                start_date=None,
+                end_date=None,
                 display_format='YYYY-MM-DD',
                 style={
                     'height': '50px',
@@ -82,103 +74,57 @@ app.layout = html.Div(
                    'alignItems': 'center',
                    'gap': '20px',
                    'marginBottom': '30px'}),
-        html.Div(
-            style={'display': 'flex', 'gap': '20px'},
-            children=[
-                html.Div(style={'flex': '1'},
-                         children=dcc.Graph(id='kpi-cards')),
-                html.Div(style={'flex': '1'}, children=[
-                    # Dropdown selector
-                    dcc.Dropdown(
-                        id='histogram-toggle',
-                        options=[
-                            {'label': 'By Session Count', 'value': 'session'},
-                            {'label': 'By Client Count', 'value': 'client'}
-                        ],
-                        value='session',
-                        clearable=False,
-                        style={'marginBottom': '10px'}
-                    ),
-                    dcc.Graph(id='histogram-graph')
-                ])
-            ]
-        ),
-
-        # Second Row: Monthly and Weekly Charts
-        html.Div(
-            style={'display': 'flex', 'gap': '20px', 'marginTop': '40px'},
-            children=[
-                html.Div(style={'flex': '1'},
-                         children=dcc.Graph(id='weekly-bar-graph')),
-                html.Div(style={'flex': '1'},
-                         children=dcc.Graph(id='monthly-line-graph'))
-            ]
-        )
-    ]
-)
+        html.Div(id='output-data-upload-1'),
+        html.Div(id='output-data-upload-2')
+            ])
 
 
-# --- Helper to filter raw data ---
-def filter_data(start_date, end_date):
-    df = df_raw.copy()
-    if start_date:
-        df = df[df['Purchase Date'] >= pd.to_datetime(start_date)]
-    if end_date:
-        df = df[df['Purchase Date'] <= pd.to_datetime(end_date)]
-    return df
-
-
-# --- Callback: KPI cards ---
+# --- Callback: File Upload and Date Range ---
 @app.callback(
-    Output('kpi-cards', 'figure'),
+    Output('output-data-upload-1', 'children'),
+    Output('output-data-upload-2', 'children'),
+    Output('date-picker-range', 'start_date', allow_duplicate=True),
+    Output('date-picker-range', 'end_date', allow_duplicate=True),
+    Input('upload-data', 'contents'),
+    State('upload-data', 'filename'),
     Input('date-picker-range', 'start_date'),
-    Input('date-picker-range', 'end_date')
+    Input('date-picker-range', 'end_date'),
+    prevent_initial_call=True
 )
-def update_kpi_cards(start_date, end_date):
-    df_filtered = filter_data(start_date, end_date)
-    kpis = get_kpis(df_filtered)
-    return create_kpi_cards(kpis)
+def update_output(contents, filename, start_date, end_date):
+    triggered_id = ctx.triggered_id
+    if triggered_id == 'upload-data':
+        if contents is not None:
+            global df_raw
+            df_raw = load_and_clean_data(contents, filename)
+            start_date = df_raw['Purchase Date'].min().date()
+            end_date = df_raw['Purchase Date'].max().date()
+            component, session_hist, client_hist = \
+                create_kpi_and_histograms_component(df_raw)
+            return (
+                component,
+                create_bar_and_line_component(df_raw),
+                start_date,
+                end_date
+            )
+        return "No file uploaded", None, None
+    elif triggered_id == 'date-picker-range':
+        if df_raw is not None:
+            df_filtered = filter_data(df_raw, start_date, end_date)
+            component, session_hist, client_hist = \
+                create_kpi_and_histograms_component(df_filtered)
+            return (
+                component,
+                create_bar_and_line_component(df_filtered),
+                start_date,
+                end_date
+            )
 
 
-# --- Callback: Histogram ---
+# --- Callback: Reset Dates ---
 @app.callback(
-    Output('histogram-graph', 'figure'),
-    Input('histogram-toggle', 'value'),
-    Input('date-picker-range', 'start_date'),
-    Input('date-picker-range', 'end_date')
-)
-def update_histogram(selected_value, start_date, end_date):
-    df_filtered = filter_data(start_date, end_date)
-    client_details = get_client_details(df_filtered)
-    session_hist, client_hist = create_histograms(df_filtered, client_details)
-    return session_hist if selected_value == 'session' else client_hist
-
-
-# --- Callback: Line chart ---
-@app.callback(
-    Output('monthly-line-graph', 'figure'),
-    Input('date-picker-range', 'start_date'),
-    Input('date-picker-range', 'end_date')
-)
-def update_line_chart(start_date, end_date):
-    df_filtered = filter_data(start_date, end_date)
-    monthly_details = get_monthly_details(df_filtered)
-    return create_monthly_line_chart(monthly_details)
-
-
-@app.callback(
-    Output('weekly-bar-graph', 'figure'),
-    Input('date-picker-range', 'start_date'),
-    Input('date-picker-range', 'end_date')
-)
-def update_weekly_bar_chart(start_date, end_date):
-    df_filtered = filter_data(start_date, end_date)
-    return create_weekday_bars(df_filtered)
-
-# --- Callback: Reset button ---
-@app.callback(
-    Output('date-picker-range', 'start_date'),
-    Output('date-picker-range', 'end_date'),
+    Output('date-picker-range', 'start_date', allow_duplicate=True),
+    Output('date-picker-range', 'end_date', allow_duplicate=True),
     Input('reset-button', 'n_clicks'),
     prevent_initial_call=True
 )
@@ -189,15 +135,19 @@ def reset_dates(n_clicks):
     )
 
 
+# --- Callback: Histogram ---
 @app.callback(
-    Output('uploaded-filename', 'children'),
-    Input('upload-data', 'filename')
+    Output('histogram-graph', 'figure'),
+    Input('histogram-toggle', 'value'),
+    Input('date-picker-range', 'start_date'),
+    Input('date-picker-range', 'end_date')
 )
-def update_uploaded_filename(filename):
-    if filename is not None:
-        return f"Uploaded: {os.path.basename(filename)}"
-    return ""
+def update_histogram(selected_value, start_date, end_date):
+    df_filtered = filter_data(df_raw, start_date, end_date)
+    client_details = get_client_details(df_filtered)
+    session_hist, client_hist = create_histograms(df_filtered, client_details)
+    return session_hist if selected_value == 'session' else client_hist
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()

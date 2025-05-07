@@ -121,7 +121,7 @@ def create_weekday_bars(df):
 
 
 # Functions to create HTML components
-def create_kpi_and_histograms(df):
+def create_kpi_and_histograms_component(df):
     kpis = get_kpis(df)
     kpi_fig = create_kpi_cards(kpis)
     session_hist, client_hist = create_histograms(df, get_client_details(df))
@@ -149,11 +149,14 @@ def create_kpi_and_histograms(df):
     return component, session_hist, client_hist
 
 
-def create_bar_and_line(df):
+def create_bar_and_line_component(df):
     weekly_bar_fig = create_weekday_bars(df)
     monthly_line_fig = create_monthly_line_chart(get_monthly_details(df))
     component = html.Div(
-                    style={'display': 'flex', 'gap': '20px'},
+                    style={
+                        'display': 'flex',
+                        'gap': '20px',
+                        'marginTop': '40px'},
                     children=[
                         html.Div(style={'flex': '1'},
                                  children=dcc.Graph(figure=weekly_bar_fig)),

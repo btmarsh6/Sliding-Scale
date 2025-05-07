@@ -19,7 +19,7 @@ def load_and_clean_data(contents, filename):
             'There was an error processing this file.'
         ])
     df.columns = df.columns.str.strip()
-    df.drop(columns=['Invoice Date', 'Unnamed: 4', 'Total', 'Location',
+    df.drop(columns=['Invoice Date', 'Patient', 'Total', 'Location',
                      'Staff Member', 'Income Category', 'Payer', 'Details'],
             inplace=True)
     df['Purchase Date'] = pd.to_datetime(
